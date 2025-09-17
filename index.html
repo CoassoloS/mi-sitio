@@ -3,146 +3,253 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>¿A qué hora pensás venir?</title>
+<title>Snake — demo</title>
 <style>
-  :root{
-    --bg1:#0b0f1a; --bg2:#141b2e;
-    --txt:#fff; --accent:#ff79c6; --accent2:#ffb86c; --accent3:#8be9fd; --accent4:#50fa7b;
+  :root { --bg:#0f1220; --panel:#161a2b; --text:#e8ecff; --accent:#7aa2ff; --accent2:#39d98a; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100dvh; display: grid; place-items: center;
+    background: radial-gradient(1200px 800px at 70% 0%, #171b2e, var(--bg));
+    color: var(--text); font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Arial, sans-serif;
   }
-  *{box-sizing:border-box}
-  html,body{height:100%}
-  body{
-    margin:0; overflow:hidden;
-    background:
-      radial-gradient(1200px 800px at 70% -10%, #1b2240, #12172a 60%),
-      linear-gradient(180deg, var(--bg1), var(--bg2));
-    color:var(--txt);
-    font-family: system-ui, Segoe UI, Roboto, -apple-system, Arial, sans-serif;
+  .wrap {
+    width: min(92vmin, 520px); display: grid; gap: 12px;
   }
-  .center{
-    position:fixed; inset:0; display:grid; place-items:center; pointer-events:none;
-    text-align:center; padding:2rem;
+  header {
+    display:flex; align-items:center; justify-content:space-between;
+    background: linear-gradient(180deg, #1b2040, var(--panel));
+    padding: 10px 14px; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,.25);
   }
-  h1{
-    font-size: clamp(2rem, 7vw, 6rem);
-    line-height:1.05; margin:0;
-    text-shadow: 0 10px 30px rgba(0,0,0,.35), 0 0 30px rgba(255,255,255,.08);
+  .scores { display:flex; gap: 12px; font-weight:600; }
+  .scores span { background:#0e1330; padding:6px 10px; border-radius:10px; }
+  .btns { display:flex; gap:8px; }
+  button {
+    background: var(--accent); color:#08122b; border:none; padding:8px 12px; border-radius:12px; font-weight:700;
+    cursor:pointer; box-shadow: 0 6px 16px rgba(122,162,255,.35);
   }
-  .sub{
-    margin-top: .6rem; font-size:clamp(1rem, 2.6vw, 1.5rem); opacity:.9;
+  button.secondary { background:#2a2f4a; color:#cfe1ff; box-shadow:none; }
+  .board {
+    position: relative; border-radius: 18px; overflow:hidden; background: #0c1030;
+    box-shadow: 0 20px 60px rgba(0,0,0,.35);
+    touch-action: none; /* para gestos */
   }
-  /* corazones */
-  .heart{
-    position: fixed;
-    font-size: 16px;
-    will-change: transform, opacity;
-    user-select: none;
-    filter: drop-shadow(0 4px 8px rgba(0,0,0,.25));
-    animation: fall var(--dur,10s) linear forwards,
-               drift var(--dur,10s) ease-in-out forwards;
+  canvas { display:block; width: 100%; height: auto; image-rendering: pixelated; }
+  .hint {
+    font-size:.9rem; opacity:.8; text-align:center;
   }
-  @keyframes fall{
-    0%{ transform: translateY(-10vh) scale(var(--s,1)) rotate(0deg); opacity:0 }
-    5%{ opacity: .95 }
-    100%{ transform: translateY(110vh) scale(var(--s,1)) rotate(360deg); opacity:0.9 }
+  .overlay {
+    position:absolute; inset:0; display:none; place-items:center; background: rgba(8, 12, 36, .72); backdrop-filter: blur(4px);
   }
-  @keyframes drift{
-    0%{ margin-left: 0 }
-    50%{ margin-left: var(--drift, 80px) }
-    100%{ margin-left: 0 }
+  .overlay.show { display:grid; }
+  .card {
+    background: #111633; padding: 18px; border-radius: 16px; text-align:center;
+    border: 1px solid rgba(122,162,255,.2);
   }
-  /* botón opcional (oculto en móviles pequeños) */
-  .cta{
-    position: fixed; right: 14px; bottom: 14px; z-index: 3;
-    background: #202746; color:#cfe1ff; border:1px solid #3a4172;
-    border-radius: 12px; padding:.6rem .9rem; cursor:pointer;
-    box-shadow: 0 8px 22px rgba(0,0,0,.3);
-  }
-  @media (max-width:560px){ .cta{ display:none } }
+  .card h2 { margin: 0 0 6px; }
+  .kbd { font: 600 .95rem/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+         background:#0d1330; padding:2px 6px; border-radius:8px; border:1px solid #273066}
+  footer { text-align:center; opacity:.7; font-size:.85rem; }
 </style>
 </head>
 <body>
-  <div class="center" aria-hidden="true">
-    <div>
-      <h1>¿A qué hora pensás venir?</h1>
-      <div class="sub">tocá o hacé clic para más corazones 💖</div>
-    </div>
-  </div>
+  <div class="wrap">
+    <header>
+      <div class="scores">
+        <span>Puntaje: <b id="score">0</b></span>
+        <span>Récord: <b id="best">0</b></span>
+      </div>
+      <div class="btns">
+        <button id="playBtn">▶ Jugar</button>
+        <button id="pauseBtn" class="secondary">⏸ Pausa</button>
+      </div>
+    </header>
 
-  <button class="cta" id="more">+ corazones</button>
+    <div class="board" id="board">
+      <canvas id="game" width="480" height="480" aria-label="tablero del juego"></canvas>
+      <div class="overlay" id="overlay">
+        <div class="card">
+          <h2 id="ovTitle">¡Snake!</h2>
+          <p id="ovText">Usá <span class="kbd">← ↑ → ↓</span> o desliza en pantalla.<br>
+          Pausa: <span class="kbd">Espacio</span> / <span class="kbd">P</span></p>
+          <button id="restartBtn">Reiniciar</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="hint">Teclado: ← ↑ → ↓ / WASD · Toque: deslizá en cualquier dirección</div>
+    <footer>Demo simple para f3telecomunicacion.site</footer>
+  </div>
 
 <script>
 (() => {
-  const colors = ["#ff5f9e","#ff79c6","#ffb86c","#8be9fd","#50fa7b","#ffd1dc","#ffadad"];
-  const glyphs = ["❤","💖","💘","💝","💗","💓","💞","🩷","💟"];
-  const ROOT = document.body;
-  const BTN = document.getElementById('more');
+  // ===== Config =====
+  const CANVAS_SIZE = 480;      // px canvas interno (se escala responsive por CSS)
+  const GRID = 24;              // celdas por lado
+  const TILE = CANVAS_SIZE / GRID;
+  const SPEED_START = 140;      // ms por paso (menor = más rápido)
+  const SPEED_MIN = 60;
+  const SPEED_STEP = 2;         // acelera levemente al comer
 
-  // crea un corazón
-  function spawnHeart(x = Math.random()*window.innerWidth, burst = false){
-    const h = document.createElement('div');
-    h.className = 'heart';
-    const g = glyphs[(Math.random()*glyphs.length)|0];
-    h.textContent = g;
-    const size = burst ? rand(22,48) : rand(14,34);
-    const dur = burst ? rand(6,10) : rand(8,14);
-    const drift = (Math.random() < .5 ? -1 : 1) * rand(40,120);
-    h.style.left = (x - size/2) + 'px';
-    h.style.top = (-rand(10,60)) + 'px';
-    h.style.fontSize = size + 'px';
-    h.style.setProperty('--s', (size/24).toFixed(2));
-    h.style.setProperty('--dur', dur + 's');
-    h.style.setProperty('--drift', drift + 'px');
-    h.style.color = colors[(Math.random()*colors.length)|0];
-    ROOT.appendChild(h);
-    // remover al terminar
-    const kill = () => h.remove();
-    h.addEventListener('animationend', kill);
-    // por si el navegador no dispara end
-    setTimeout(kill, (dur+0.3)*1000);
+  // ===== Estado =====
+  const cvs = document.getElementById('game');
+  const ctx = cvs.getContext('2d');
+  const scoreEl = document.getElementById('score');
+  const bestEl = document.getElementById('best');
+  const overlay = document.getElementById('overlay');
+  const ovTitle = document.getElementById('ovTitle');
+  const ovText  = document.getElementById('ovText');
+  const playBtn = document.getElementById('playBtn');
+  const pauseBtn = document.getElementById('pauseBtn');
+  const restartBtn = document.getElementById('restartBtn');
+  const board = document.getElementById('board');
+
+  let snake, dir, nextDir, food, score, best, speed, lastStep = 0, paused = false, gameOver = false, rafId;
+
+  best = +localStorage.getItem('snakeBest') || 0;
+  bestEl.textContent = best;
+
+  function rndCell() { return Math.floor(Math.random() * GRID); }
+  function spawnFood() {
+    let f;
+    do { f = { x: rndCell(), y: rndCell() }; }
+    while (snake.some(s => s.x === f.x && s.y === f.y));
+    return f;
   }
-  function rand(a,b){ return Math.floor(Math.random()*(b-a+1))+a; }
 
-  // lluvia continua
-  let rainId = null;
-  function startRain(){
-    if (rainId) return;
-    rainId = setInterval(() => {
-      for(let i=0;i<rand(1,2);i++) spawnHeart(); // 1–2 corazones cada tick
-    }, 250);
+  function reset() {
+    snake = [{x:12,y:12},{x:11,y:12},{x:10,y:12}];
+    dir = {x:1,y:0};
+    nextDir = {...dir};
+    food = spawnFood();
+    score = 0;
+    speed = SPEED_START;
+    paused = false;
+    gameOver = false;
+    scoreEl.textContent = score;
+    hideOverlay();
+    cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(loop);
   }
-  function stopRain(){ clearInterval(rainId); rainId=null; }
 
-  // interacción: clic/touch = ráfaga
-  window.addEventListener('pointerdown', e=>{
-    const n = rand(8,14);
-    for(let i=0;i<n;i++){
-      setTimeout(()=>spawnHeart(e.clientX, true), i*35);
+  function end(reason="Fin del juego") {
+    gameOver = true;
+    showOverlay("Juego terminado", `${reason}<br>Puntaje: ${score}`);
+    if (score > best) {
+      best = score; localStorage.setItem('snakeBest', best); bestEl.textContent = best;
     }
+  }
+
+  function togglePause() {
+    if (gameOver) return;
+    paused = !paused;
+    pauseBtn.textContent = paused ? "▶ Reanudar" : "⏸ Pausa";
+    if (!paused) { lastStep = 0; rafId = requestAnimationFrame(loop); }
+    else showOverlay("Pausa", "Presioná Reanudar o <span class='kbd'>Espacio</span> / <span class='kbd'>P</span>");
+  }
+
+  function showOverlay(title, text) {
+    ovTitle.textContent = title;
+    ovText.innerHTML = text;
+    overlay.classList.add('show');
+  }
+  function hideOverlay(){ overlay.classList.remove('show'); }
+
+  // ===== Render =====
+  function draw() {
+    // Fondo cuadriculado
+    for (let y=0; y<GRID; y++) {
+      for (let x=0; x<GRID; x++) {
+        ctx.fillStyle = ((x+y)&1) ? '#0a1040' : '#0b1248';
+        ctx.fillRect(x*TILE, y*TILE, TILE, TILE);
+      }
+    }
+    // Comida
+    ctx.fillStyle = '#39d98a';
+    ctx.beginPath();
+    ctx.arc((food.x+0.5)*TILE, (food.y+0.5)*TILE, TILE*0.35, 0, Math.PI*2);
+    ctx.fill();
+
+    // Snake
+    for (let i=0; i<snake.length; i++) {
+      const s = snake[i];
+      ctx.fillStyle = i === 0 ? '#7aa2ff' : '#89b4ff';
+      ctx.fillRect(s.x*TILE+1, s.y*TILE+1, TILE-2, TILE-2);
+    }
+  }
+
+  // ===== Lógica =====
+  function step() {
+    dir = nextDir; // aplicar dirección elegida en el frame anterior
+    const head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
+
+    // colisión paredes
+    if (head.x < 0 || head.y < 0 || head.x >= GRID || head.y >= GRID) return end("Chocaste con la pared");
+
+    // colisión cuerpo
+    if (snake.some(s => s.x === head.x && s.y === head.y)) return end("Te mordiste la cola");
+
+    snake.unshift(head);
+
+    // comer
+    if (head.x === food.x && head.y === food.y) {
+      score++; scoreEl.textContent = score;
+      food = spawnFood();
+      speed = Math.max(SPEED_MIN, speed - SPEED_STEP);
+    } else {
+      snake.pop(); // mover
+    }
+  }
+
+  function loop(ts) {
+    if (paused || gameOver) return;
+    if (!lastStep) lastStep = ts;
+    if (ts - lastStep >= speed) {
+      step(); lastStep = ts;
+    }
+    draw();
+    rafId = requestAnimationFrame(loop);
+  }
+
+  // ===== Controles teclado =====
+  const keyDirs = {
+    ArrowUp:{x:0,y:-1}, KeyW:{x:0,y:-1},
+    ArrowDown:{x:0,y:1}, KeyS:{x:0,y:1},
+    ArrowLeft:{x:-1,y:0}, KeyA:{x:-1,y:0},
+    ArrowRight:{x:1,y:0}, KeyD:{x:1,y:0},
+  };
+  addEventListener('keydown', e=>{
+    if (e.code === 'Space' || e.key.toLowerCase() === 'p') { e.preventDefault(); togglePause(); return; }
+    const nd = keyDirs[e.code];
+    if (!nd || gameOver) return;
+    // evitar reversa inmediata
+    if ((nd.x === -dir.x && nd.y === -dir.y)) return;
+    nextDir = nd;
   });
-  BTN.addEventListener('click', ()=>{
-    const mid = window.innerWidth/2;
-    for(let i=0;i<18;i++) setTimeout(()=>spawnHeart(mid + rand(-160,160), true), i*35);
+
+  // ===== Gestos touch =====
+  let tStart = null;
+  board.addEventListener('pointerdown', e => { tStart = {x:e.clientX, y:e.clientY}; });
+  board.addEventListener('pointerup', e => {
+    if (!tStart) return;
+    const dx = e.clientX - tStart.x, dy = e.clientY - tStart.y;
+    const ax = Math.abs(dx), ay = Math.abs(dy);
+    if (ax < 10 && ay < 10) { tStart = null; return; } // toque corto, ignorar
+    let nd;
+    if (ax > ay) nd = { x: dx>0? 1 : -1, y: 0 };
+    else         nd = { x: 0, y: dy>0? 1 : -1 };
+    if (!(nd.x === -dir.x && nd.y === -dir.y)) nextDir = nd;
+    tStart = null;
   });
 
-  // arranca
-  startRain();
+  // Botones
+  playBtn.addEventListener('click', reset);
+  pauseBtn.addEventListener('click', togglePause);
+  restartBtn.addEventListener('click', reset);
 
-  // manejo de visibilidad para ahorrar batería
-  document.addEventListener('visibilitychange', ()=>{
-    if(document.hidden) stopRain(); else startRain();
-  });
-
-  // reacomodar si cambia el tamaño
-  window.addEventListener('resize', ()=>{ /* no hace falta recalcular nada aquí */ });
-
-  // extra: actualizar título dinámicamente con la hora actual
-  // (queda lindo y no molesta el mensaje)
-  setInterval(()=>{
-    document.title = "¿A qué hora pensás venir? ❤️ " + new Date().toLocaleTimeString();
-  }, 1000);
+  // Pantalla inicial
+  showOverlay("¡Snake!", "Tocá <b>Jugar</b> o usá <span class='kbd'>Enter</span>.<br>Mové con flechas/WASD o deslizá en pantalla.");
+  addEventListener('keydown', e => { if (overlay.classList.contains('show') && (e.key === 'Enter')) reset(); });
 })();
 </script>
 </body>
 </html>
-
