@@ -1,3 +1,255 @@
-<!doctype html><meta charset="utf-8"><title>Prueba</title>
-<h1>¡Propiedad de F3 !</h1>
-<p>Deploy rápido con Vercel + Namecheap.</p>
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Snake — demo</title>
+<style>
+  :root { --bg:#0f1220; --panel:#161a2b; --text:#e8ecff; --accent:#7aa2ff; --accent2:#39d98a; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100dvh; display: grid; place-items: center;
+    background: radial-gradient(1200px 800px at 70% 0%, #171b2e, var(--bg));
+    color: var(--text); font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Arial, sans-serif;
+  }
+  .wrap {
+    width: min(92vmin, 520px); display: grid; gap: 12px;
+  }
+  header {
+    display:flex; align-items:center; justify-content:space-between;
+    background: linear-gradient(180deg, #1b2040, var(--panel));
+    padding: 10px 14px; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,.25);
+  }
+  .scores { display:flex; gap: 12px; font-weight:600; }
+  .scores span { background:#0e1330; padding:6px 10px; border-radius:10px; }
+  .btns { display:flex; gap:8px; }
+  button {
+    background: var(--accent); color:#08122b; border:none; padding:8px 12px; border-radius:12px; font-weight:700;
+    cursor:pointer; box-shadow: 0 6px 16px rgba(122,162,255,.35);
+  }
+  button.secondary { background:#2a2f4a; color:#cfe1ff; box-shadow:none; }
+  .board {
+    position: relative; border-radius: 18px; overflow:hidden; background: #0c1030;
+    box-shadow: 0 20px 60px rgba(0,0,0,.35);
+    touch-action: none; /* para gestos */
+  }
+  canvas { display:block; width: 100%; height: auto; image-rendering: pixelated; }
+  .hint {
+    font-size:.9rem; opacity:.8; text-align:center;
+  }
+  .overlay {
+    position:absolute; inset:0; display:none; place-items:center; background: rgba(8, 12, 36, .72); backdrop-filter: blur(4px);
+  }
+  .overlay.show { display:grid; }
+  .card {
+    background: #111633; padding: 18px; border-radius: 16px; text-align:center;
+    border: 1px solid rgba(122,162,255,.2);
+  }
+  .card h2 { margin: 0 0 6px; }
+  .kbd { font: 600 .95rem/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+         background:#0d1330; padding:2px 6px; border-radius:8px; border:1px solid #273066}
+  footer { text-align:center; opacity:.7; font-size:.85rem; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="scores">
+        <span>Puntaje: <b id="score">0</b></span>
+        <span>Récord: <b id="best">0</b></span>
+      </div>
+      <div class="btns">
+        <button id="playBtn">▶ Jugar</button>
+        <button id="pauseBtn" class="secondary">⏸ Pausa</button>
+      </div>
+    </header>
+
+    <div class="board" id="board">
+      <canvas id="game" width="480" height="480" aria-label="tablero del juego"></canvas>
+      <div class="overlay" id="overlay">
+        <div class="card">
+          <h2 id="ovTitle">¡Snake!</h2>
+          <p id="ovText">Usá <span class="kbd">← ↑ → ↓</span> o desliza en pantalla.<br>
+          Pausa: <span class="kbd">Espacio</span> / <span class="kbd">P</span></p>
+          <button id="restartBtn">Reiniciar</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="hint">Teclado: ← ↑ → ↓ / WASD · Toque: deslizá en cualquier dirección</div>
+    <footer>Demo simple para f3telecomunicacion.site</footer>
+  </div>
+
+<script>
+(() => {
+  // ===== Config =====
+  const CANVAS_SIZE = 480;      // px canvas interno (se escala responsive por CSS)
+  const GRID = 24;              // celdas por lado
+  const TILE = CANVAS_SIZE / GRID;
+  const SPEED_START = 140;      // ms por paso (menor = más rápido)
+  const SPEED_MIN = 60;
+  const SPEED_STEP = 2;         // acelera levemente al comer
+
+  // ===== Estado =====
+  const cvs = document.getElementById('game');
+  const ctx = cvs.getContext('2d');
+  const scoreEl = document.getElementById('score');
+  const bestEl = document.getElementById('best');
+  const overlay = document.getElementById('overlay');
+  const ovTitle = document.getElementById('ovTitle');
+  const ovText  = document.getElementById('ovText');
+  const playBtn = document.getElementById('playBtn');
+  const pauseBtn = document.getElementById('pauseBtn');
+  const restartBtn = document.getElementById('restartBtn');
+  const board = document.getElementById('board');
+
+  let snake, dir, nextDir, food, score, best, speed, lastStep = 0, paused = false, gameOver = false, rafId;
+
+  best = +localStorage.getItem('snakeBest') || 0;
+  bestEl.textContent = best;
+
+  function rndCell() { return Math.floor(Math.random() * GRID); }
+  function spawnFood() {
+    let f;
+    do { f = { x: rndCell(), y: rndCell() }; }
+    while (snake.some(s => s.x === f.x && s.y === f.y));
+    return f;
+  }
+
+  function reset() {
+    snake = [{x:12,y:12},{x:11,y:12},{x:10,y:12}];
+    dir = {x:1,y:0};
+    nextDir = {...dir};
+    food = spawnFood();
+    score = 0;
+    speed = SPEED_START;
+    paused = false;
+    gameOver = false;
+    scoreEl.textContent = score;
+    hideOverlay();
+    cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(loop);
+  }
+
+  function end(reason="Fin del juego") {
+    gameOver = true;
+    showOverlay("Juego terminado", `${reason}<br>Puntaje: ${score}`);
+    if (score > best) {
+      best = score; localStorage.setItem('snakeBest', best); bestEl.textContent = best;
+    }
+  }
+
+  function togglePause() {
+    if (gameOver) return;
+    paused = !paused;
+    pauseBtn.textContent = paused ? "▶ Reanudar" : "⏸ Pausa";
+    if (!paused) { lastStep = 0; rafId = requestAnimationFrame(loop); }
+    else showOverlay("Pausa", "Presioná Reanudar o <span class='kbd'>Espacio</span> / <span class='kbd'>P</span>");
+  }
+
+  function showOverlay(title, text) {
+    ovTitle.textContent = title;
+    ovText.innerHTML = text;
+    overlay.classList.add('show');
+  }
+  function hideOverlay(){ overlay.classList.remove('show'); }
+
+  // ===== Render =====
+  function draw() {
+    // Fondo cuadriculado
+    for (let y=0; y<GRID; y++) {
+      for (let x=0; x<GRID; x++) {
+        ctx.fillStyle = ((x+y)&1) ? '#0a1040' : '#0b1248';
+        ctx.fillRect(x*TILE, y*TILE, TILE, TILE);
+      }
+    }
+    // Comida
+    ctx.fillStyle = '#39d98a';
+    ctx.beginPath();
+    ctx.arc((food.x+0.5)*TILE, (food.y+0.5)*TILE, TILE*0.35, 0, Math.PI*2);
+    ctx.fill();
+
+    // Snake
+    for (let i=0; i<snake.length; i++) {
+      const s = snake[i];
+      ctx.fillStyle = i === 0 ? '#7aa2ff' : '#89b4ff';
+      ctx.fillRect(s.x*TILE+1, s.y*TILE+1, TILE-2, TILE-2);
+    }
+  }
+
+  // ===== Lógica =====
+  function step() {
+    dir = nextDir; // aplicar dirección elegida en el frame anterior
+    const head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
+
+    // colisión paredes
+    if (head.x < 0 || head.y < 0 || head.x >= GRID || head.y >= GRID) return end("Chocaste con la pared");
+
+    // colisión cuerpo
+    if (snake.some(s => s.x === head.x && s.y === head.y)) return end("Te mordiste la cola");
+
+    snake.unshift(head);
+
+    // comer
+    if (head.x === food.x && head.y === food.y) {
+      score++; scoreEl.textContent = score;
+      food = spawnFood();
+      speed = Math.max(SPEED_MIN, speed - SPEED_STEP);
+    } else {
+      snake.pop(); // mover
+    }
+  }
+
+  function loop(ts) {
+    if (paused || gameOver) return;
+    if (!lastStep) lastStep = ts;
+    if (ts - lastStep >= speed) {
+      step(); lastStep = ts;
+    }
+    draw();
+    rafId = requestAnimationFrame(loop);
+  }
+
+  // ===== Controles teclado =====
+  const keyDirs = {
+    ArrowUp:{x:0,y:-1}, KeyW:{x:0,y:-1},
+    ArrowDown:{x:0,y:1}, KeyS:{x:0,y:1},
+    ArrowLeft:{x:-1,y:0}, KeyA:{x:-1,y:0},
+    ArrowRight:{x:1,y:0}, KeyD:{x:1,y:0},
+  };
+  addEventListener('keydown', e=>{
+    if (e.code === 'Space' || e.key.toLowerCase() === 'p') { e.preventDefault(); togglePause(); return; }
+    const nd = keyDirs[e.code];
+    if (!nd || gameOver) return;
+    // evitar reversa inmediata
+    if ((nd.x === -dir.x && nd.y === -dir.y)) return;
+    nextDir = nd;
+  });
+
+  // ===== Gestos touch =====
+  let tStart = null;
+  board.addEventListener('pointerdown', e => { tStart = {x:e.clientX, y:e.clientY}; });
+  board.addEventListener('pointerup', e => {
+    if (!tStart) return;
+    const dx = e.clientX - tStart.x, dy = e.clientY - tStart.y;
+    const ax = Math.abs(dx), ay = Math.abs(dy);
+    if (ax < 10 && ay < 10) { tStart = null; return; } // toque corto, ignorar
+    let nd;
+    if (ax > ay) nd = { x: dx>0? 1 : -1, y: 0 };
+    else         nd = { x: 0, y: dy>0? 1 : -1 };
+    if (!(nd.x === -dir.x && nd.y === -dir.y)) nextDir = nd;
+    tStart = null;
+  });
+
+  // Botones
+  playBtn.addEventListener('click', reset);
+  pauseBtn.addEventListener('click', togglePause);
+  restartBtn.addEventListener('click', reset);
+
+  // Pantalla inicial
+  showOverlay("¡Snake!", "Tocá <b>Jugar</b> o usá <span class='kbd'>Enter</span>.<br>Mové con flechas/WASD o deslizá en pantalla.");
+  addEventListener('keydown', e => { if (overlay.classList.contains('show') && (e.key === 'Enter')) reset(); });
+})();
+</script>
+</body>
+</html>
